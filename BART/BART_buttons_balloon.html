@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+ <head>
+   <title>BART with Buttons</title>
+   <script src="https://unpkg.com/jspsych@8.2.1"></script>
+   <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2.1.0"></script>
+   <script src="https://unpkg.com/@jspsych/plugin-preload@2.1.0"></script>
+   <link href="https://unpkg.com/jspsych@8.2.1/css/jspsych.css" rel="stylesheet" />
+   <style>
+     html, body {
+       margin: 0; 
+       padding: 0; 
+       height: 100%;
+       overflow-x: hidden; /* Prevent horizontal scrolling */
+     }
+
+     .jspsych-content-wrapper {
+       display: flex;
+       flex-direction: column;
+       justify-content: space-between;
+       height: 100vh;
+       max-width: 100vw; /* Prevent horizontal overflow */
+       box-sizing: border-box;
+       padding: 0 10px; /* small horizontal padding */
+     }
+
+     .jspsych-content {
+       display: flex;
+       flex-direction: column;
+       justify-content: flex-end;
+       align-items: center;
+       flex-grow: 1;
+       max-width: 100vw;
+       box-sizing: border-box;
+     }
+
+     .bart-container {
+       display: flex;
+       justify-content: center;
+       align-items: flex-end;
+       width: 100%;
+       max-width: 100vw;
+       overflow: visible;
+       /* prevent balloon container from shrinking or shifting */
+       flex-shrink: 0;
+     }
+
+     .balloon-area img {
+       max-width: 100%;
+       max-height: 50vh; /* maximum half viewport height */
+       object-fit: contain;
+       transform-origin: bottom center;
+       display: block;
+       margin: 0 auto;
+       transition: transform 0.3s ease, height 0.3s ease;
+       user-select: none;
+       pointer-events: none;
+     }
+
+     .earnings-text {
+       margin-bottom: 10px;
+       font-size: 1.1em;
+       text-align: center;
+       flex-shrink: 0;
+     }
+   </style>
+ </head>
+ <body></body>
+ <script>
+   // INITIALIZE JSPSYCH
+   const jsPsych = initJsPsych({
+     on_finish: () => jsPsych.data.displayData()
+   });
+
+   // DEFINE VARIABLES
+   const NUM_TRIALS = 5; // Number of balloon trials
+   const CURRENCY_UNIT_PER_PUMP = 1; // 1 cent per pump
+   const MAX_PUMPS = 20; // allow bigger max for testing
+   const MIN_PUMPS = 1;
+
+   const CURRENCY_UNIT = 'cent';
+   const CURRENCY_UNIT_PLURAL = 'cents';
+
+   let USDollar = new Intl.NumberFormat('en-US', {
+     style: 'currency',
+     currency: 'USD'
+   });
+
+   const timeline = [];
+
+   // Preload images
+   const preload = {
+     type: jsPsychPreload,
+     images: ['img/balloon.png', 'img/popped_balloon.png'],
+   }
+   timeline.push(preload);
+
+   // Welcome
+   timeline.push({
+     type: jsPsychHtmlButtonResponse,
+     stimulus: 'Welcome to the BART experiment. Click below to begin.',
+     choices: ['Begin']
+   });
+
+   // Instructions
+   timeline.push({
+     type: jsPsychHtmlButtonResponse,
+     stimulus: () => {
+       const currency_string = CURRENCY_UNIT_PER_PUMP === 1 ? CURRENCY_UNIT : CURRENCY_UNIT_PLURAL;
+       return `
+         <p>In this task, you will inflate a balloon to earn money.</p>
+         <p>Click <strong>Pump</strong> to inflate the balloon and earn ${CURRENCY_UNIT_PER_PUMP} ${currency_string} per pump.</p>
+         <p>Click <strong>Collect</strong> to save your money and end the round.</p>
+         <p>If the balloon pops, you lose the money for that round!</p>
+       `;
+     },
+     choices: ['Start']
+   });
+
+   function getBalloonStyle(pump_count) {
+     // Use fixed max sizes to prevent overflow and shifts
+     const maxBalloonHeightVh = 50; // max 50% viewport height
+     const baseHeightPx = 100;
+     const growthPerPumpPx = 10; // less aggressive growth to prevent overflow
+     
+     // Calculate height capped at maxBalloonHeightVh of viewport height
+     const maxBalloonHeightPx = window.innerHeight * (maxBalloonHeightVh / 100);
+     const estimatedHeightPx = baseHeightPx + pump_count * growthPerPumpPx;
+     const finalHeightPx = Math.min(estimatedHeightPx, maxBalloonHeightPx);
+     
+     // Scale capped to avoid huge transforms
+     const scale = 1 + pump_count * 0.02; // slower scale growth
+     const cappedScale = Math.min(scale, 1.5);
+
+     return `
+       height: ${finalHeightPx}px;
+       transform: scale(${cappedScale});
+       transform-origin: bottom center;
+       width: auto;
+     `;
+   }
+
+   for (let trial = 0; trial < NUM_TRIALS; trial++) {
+      const explosion_range = MAX_PUMPS - MIN_PUMPS;
+      const explosion_point = Math.floor(Math.random() * explosion_range) + MIN_PUMPS;
+
+     let pump_count = 0;
+     let balloon_popped = false;
+     let cashed_out = false;
+
+     const pump_loop = {
+       timeline: [{
+         type: jsPsychHtmlButtonResponse,
+         stimulus: () => {
+           const style = getBalloonStyle(pump_count);
+           return `
+             <div class="bart-container">
+               <div class="balloon-area">
+                 <img src="img/balloon.png" style="${style}" />
+               </div>
+             </div>
+           `;
+         },
+         on_load: () => {
+           // Remove old earnings-text if any
+           const oldEarnings = document.querySelector('.earnings-text');
+           if (oldEarnings) oldEarnings.remove();
+
+           const earningsText = document.createElement('div');
+           earningsText.className = 'earnings-text';
+           earningsText.innerText = `Possible earnings this round: ${USDollar.format(pump_count * CURRENCY_UNIT_PER_PUMP * 0.01)}`;
+
+           const content = document.querySelector('.jspsych-content');
+           if (content) {
+             content.appendChild(earningsText);
+           }
+         },
+         choices: ['Pump', 'Collect'],
+         on_finish: data => {
+           if (data.response === 0) {
+             pump_count++;
+             if (pump_count >= explosion_point) {
+               balloon_popped = true;
+             }
+           } else if (data.response === 1) {
+             cashed_out = true;
+           }
+         }
+       }],
+       loop_function: () => !balloon_popped && !cashed_out
+     };
+
+     const outcome = {
+       type: jsPsychHtmlButtonResponse,
+       stimulus: () => {
+         const style = getBalloonStyle(pump_count);
+         if (balloon_popped) {
+           return `
+             <div style="display: flex; flex-direction: column; align-items: center;">
+               <div>
+                 <img src="img/popped_balloon.png" style="${style}" />
+               </div>
+               <div style="text-align: center; max-width: 600px;">
+                 <p><strong>POP!</strong> The balloon exploded. You earned 0 ${CURRENCY_UNIT_PLURAL} this round.</p>
+                 <p>Total earnings across all rounds: <strong>${jsPsych.data.get().filter({ task: 'bart', exploded: false, cashed_out: true }).select('pump_count').sum()}</strong></p>
+               </div>
+             </div>
+           `;
+         } else {
+           const currency_string = pump_count === 1 ? CURRENCY_UNIT : CURRENCY_UNIT_PLURAL;
+           const total_points = pump_count + jsPsych.data.get().filter({ task: 'bart', exploded: false, cashed_out: true }).select('pump_count').sum();
+           const total_money = total_points * CURRENCY_UNIT_PER_PUMP * 0.01;
+
+           return `
+             <p>You collected <strong>${pump_count}</strong> ${currency_string} this round.</p>
+             <p>Total earnings across all rounds: <strong>${USDollar.format(total_money)}</strong></p>
+           `;
+         }
+       },
+       choices: ['Continue'],
+       on_finish: data => {
+         data.task = 'bart';
+         data.trial_num = trial + 1;
+         data.pump_count = pump_count;
+         data.exploded = balloon_popped;
+         data.cashed_out = cashed_out;
+       }
+     };
+
+     timeline.push(pump_loop, outcome);
+   }
+
+   // Debrief
+   timeline.push({
+     type: jsPsychHtmlButtonResponse,
+     stimulus: () => {
+       const data = jsPsych.data.get().filter({ task: 'bart' });
+       const totalPoints = data.filter({ exploded: false, cashed_out: true }).select('pump_count').sum();
+       return `<p>You earned a total of <strong>${USDollar.format(totalPoints * 0.01)}</strong>!</p>
+               <p>Thanks for participating!</p>`;
+     },
+     choices: ['Finish']
+   });
+
+   jsPsych.run(timeline);
+ </script>
+</html>

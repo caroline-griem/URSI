@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+ <head>
+   <title>BART with Buttons</title>
+   <script src="https://unpkg.com/jspsych@8.2.1"></script>
+   <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2.1.0"></script>
+   <link href="https://unpkg.com/jspsych@8.2.1/css/jspsych.css" rel="stylesheet" />
+   <style>
+     #balloon {
+       padding: 20px;
+       width: 100px;
+       height: 150px;
+       margin: auto;
+  
+       border-radius: 50%;
+       background-color: red;
+       transition: all 0.2s ease-in-out;
+     }
+   </style>
+ </head>
+ <body></body>
+ <script>
+   const jsPsych = initJsPsych({
+     on_finish: () => jsPsych.data.displayData()
+   });
+
+
+   const timeline = [];
+
+
+   // Welcome
+   timeline.push({
+     type: jsPsychHtmlButtonResponse,
+     stimulus: 'Welcome to the BART experiment. Click below to begin.',
+     choices: ['Begin']
+   });
+
+
+   // Instructions
+   timeline.push({
+     type: jsPsychHtmlButtonResponse,
+     stimulus: `
+       <p>In this task, you will inflate a balloon to earn points.</p>
+       <p>Click <strong>Pump</strong> to inflate the balloon and earn 1 point per pump.</p>
+       <p>Click <strong>Collect</strong> to save your points and end the round.</p>
+       <p>If the balloon pops, you lose the points for that round!</p>
+     `,
+     choices: ['Start']
+   });
+
+
+   const NUM_TRIALS = 5;
+
+
+   for (let trial = 0; trial < NUM_TRIALS; trial++) {
+     const explosion_point = Math.floor(Math.random() * 20) + 1;
+     let pump_count = 0;
+     let balloon_popped = false;
+     let cashed_out = false;
+
+
+     const pump_loop = {
+       timeline: [{
+         type: jsPsychHtmlButtonResponse,
+         stimulus: () => {
+           const scale = 1 + pump_count * 0.05;
+           return `
+               <div style="display: flex; flex-direction: column; align-items: center;">
+               <div id="balloon" style="transform: scale(${scale}); margin-bottom: 30px;"></div>
+               <div style="text-align: center; max-width: 600px;">
+                   <p>Points this round: ${pump_count}</p>
+                   <p>Click a button below to continue.</p>
+               </div>
+               </div>
+       `;
+       },
+
+
+       //   stimulus: () => {
+       //     const scale = 1 + pump_count * 0.05;
+       //     return `
+       //       <div id="balloon" style="transform: scale(${scale});"></div>
+       //       <p>Points this round: ${pump_count}</p>
+       //       <p>Click a button below to continue.</p>
+       //     `;
+       //   },
+         choices: ['Pump', 'Collect'],
+         on_finish: data => {
+           if (data.response === 0) { // Pump
+             pump_count++;
+             if (pump_count >= explosion_point) {
+               balloon_popped = true;
+             }
+           } else if (data.response === 1) { // Collect
+             cashed_out = true;
+           }
+         }
+       }],
+       loop_function: () => {
+         return !balloon_popped && !cashed_out;
+       }
+     };
+
+
+     const outcome = {
+       type: jsPsychHtmlButtonResponse,
+       stimulus: () => {
+         if (balloon_popped) {
+           return `<p><strong>POP!</strong> The balloon exploded. You earned 0 points this round.</p>`;
+         } else {
+           return `<p>You collected <strong>${pump_count}</strong> points this round.</p>`;
+         }
+       },
+       choices: ['Continue'],
+       on_finish: data => {
+         data.task = 'bart';
+         data.trial_num = trial + 1;
+         data.pump_count = pump_count;
+         data.exploded = balloon_popped;
+         data.cashed_out = cashed_out;
+       }
+     };
+
+
+     timeline.push(pump_loop, outcome);
+   }
+
+
+   // Debrief
+   timeline.push({
+     type: jsPsychHtmlButtonResponse,
+     stimulus: () => {
+       const data = jsPsych.data.get().filter({ task: 'bart' });
+       const totalPoints = data
+         .filter({ exploded: false, cashed_out: true })
+         .select('pump_count')
+         .sum();
+       return `<p>You earned a total of <strong>${totalPoints}</strong> points!</p>
+               <p>Thanks for participating!</p>`;
+     },
+     choices: ['Finish']
+   });
+
+
+   jsPsych.run(timeline);
+ </script>
+</html>
+
+
