@@ -63,20 +63,29 @@
        text-align: center;
        flex-shrink: 0;
      }
+     
+     pre {
+      white-space: pre-wrap;       /* Wrap long lines */
+      word-break: break-word;      /* Break long words */
+      overflow-x: auto;            /* Allow horizontal scroll if needed */
+      max-width: 100vw;            /* Prevent overflow beyond viewport width */
+      box-sizing: border-box;
+    }
+
    </style>
  </head>
  <body></body>
  <script>
    // INITIALIZE JSPSYCH
    const jsPsych = initJsPsych({
-     on_finish: () => jsPsych.data.displayData()
+     on_finish: () => jsPsych.data.displayData('json')
    });
 
    // DEFINE VARIABLES
    const NUM_TRIALS = 5; // Number of balloon trials
-   const CURRENCY_UNIT_PER_PUMP = 1; // 1 cent per pump
-   const MAX_PUMPS = 20; // allow bigger max for testing
-   const MIN_PUMPS = 1;
+   const CURRENCY_UNIT_PER_PUMP = 1; // eg, 1 cent per pump
+   const MAX_PUMPS = 20; // highest possible pump count before balloon pops
+   const MIN_PUMPS = 1; // lowest possible pump count before balloon pops
 
    const CURRENCY_UNIT = 'cent';
    const CURRENCY_UNIT_PLURAL = 'cents';
@@ -106,10 +115,9 @@
    timeline.push({
      type: jsPsychHtmlButtonResponse,
      stimulus: () => {
-       const currency_string = CURRENCY_UNIT_PER_PUMP === 1 ? CURRENCY_UNIT : CURRENCY_UNIT_PLURAL;
        return `
          <p>In this task, you will inflate a balloon to earn money.</p>
-         <p>Click <strong>Pump</strong> to inflate the balloon and earn ${CURRENCY_UNIT_PER_PUMP} ${currency_string} per pump.</p>
+         <p>Click <strong>Pump</strong> to inflate the balloon and earn <strong>${USDollar.format(.01*CURRENCY_UNIT_PER_PUMP)}</strong> per pump.</p>
          <p>Click <strong>Collect</strong> to save your money and end the round.</p>
          <p>If the balloon pops, you lose the money for that round!</p>
        `;
@@ -168,7 +176,7 @@
 
            const earningsText = document.createElement('div');
            earningsText.className = 'earnings-text';
-           earningsText.innerText = `Possible earnings this round: ${USDollar.format(pump_count * CURRENCY_UNIT_PER_PUMP * 0.01)}`;
+             earningsText.innerHTML = `Possible earnings this round: <strong>${USDollar.format(pump_count * CURRENCY_UNIT_PER_PUMP * 0.01)}</strong>`;
 
            const content = document.querySelector('.jspsych-content');
            if (content) {
@@ -201,8 +209,8 @@
                  <img src="img/popped_balloon.png" style="${style}" />
                </div>
                <div style="text-align: center; max-width: 600px;">
-                 <p><strong>POP!</strong> The balloon exploded. You earned 0 ${CURRENCY_UNIT_PLURAL} this round.</p>
-                 <p>Total earnings across all rounds: <strong>${jsPsych.data.get().filter({ task: 'bart', exploded: false, cashed_out: true }).select('pump_count').sum()}</strong></p>
+                 <p><strong>POP!</strong> The balloon exploded. You earned <strong>${USDollar.format(0)}</strong> this round.</p>
+                 <p>Total earnings across all rounds: <strong>${USDollar.format(.01* jsPsych.data.get().filter({ task: 'bart', exploded: false, cashed_out: true }).select('pump_count').sum())}</strong></p>
                </div>
              </div>
            `;
@@ -212,7 +220,7 @@
            const total_money = total_points * CURRENCY_UNIT_PER_PUMP * 0.01;
 
            return `
-             <p>You collected <strong>${pump_count}</strong> ${currency_string} this round.</p>
+             <p>You collected <strong>${USDollar.format(.01*pump_count)}</strong> this round.</p>
              <p>Total earnings across all rounds: <strong>${USDollar.format(total_money)}</strong></p>
            `;
          }
